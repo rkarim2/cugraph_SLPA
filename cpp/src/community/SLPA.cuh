@@ -291,14 +291,24 @@ void SLPA(raft::handle_t const& handle,
 {
    int T = 50;
     float r = 0.1;
-    int n = 13; 
-    int cols = 56;
+    int n = (int)graph_view.number_of_vertices(); 
+    int cols = (int)graph_view.local_edge_partition_view().number_of_edges();
     int mod = 1;
     int num_lines = 0;
 
-    thrust::universal_vector<int> row;
-    thrust::universal_vector<int> col;
+    vertex_t * rows = graph_view.local_edge_partition_view().indices();
+    edge_t * columns = graph_view.local_edge_partition_view().offsets();
 
+    thrust::universal_vector<int> row(n+1);
+    thrust::universal_vector<int> col(cols);
+
+    for(int i = 0; i < n+1; i++) {
+      row[i] = (int)rows[i];
+    }
+
+    for(int j = 0; j < cols; j++) {
+      cols[j] = (int)columns[j];
+    }
     std::cout << "finished creating\n" << std::endl;
 
     thrust::universal_vector<int> row_id(cols);
