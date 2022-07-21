@@ -53,20 +53,21 @@ unsigned int hash(unsigned int a)
     return a;
 }
 
-struct get_label 
+struct get_label
 {
     int * col;
     thrust::tuple<int,int> * mem;
     int * memnnz;
     int n;
+    int T;
     //int * _col, int * _mem, int * _memnnz,
-    get_label(int _n, thrust::universal_vector<int> &_col, thrust::universal_vector<thrust::tuple<int,int> > &_mem, thrust::universal_vector<int> &_memnnz) {
+    get_label(int _n, thrust::universal_vector<int> &_col, thrust::universal_vector<thrust::tuple<int,int> > &_mem, thrust::universal_vector<int> &_memnnz, int _T) {
         col= thrust::raw_pointer_cast(_col.data());
         mem = thrust::raw_pointer_cast(_mem.data());
         memnnz= thrust::raw_pointer_cast(_memnnz.data());
         //labellist = thrust::raw_pointer_cast(&_labellist[0]);
         n = _n;
-
+        T = _T;
     }
   __device__
   thrust::tuple<int,int> operator()(unsigned int thread_id)
@@ -74,17 +75,17 @@ struct get_label
     int max = 0;
     int offset = -1;
     for(int i = 0; i < memnnz[col[i]]; i++){
-      if(thrust::get<1>(mem[col[thread_id] * n + i]) > max) {
+      if(thrust::get<1>(mem[col[thread_id] * T + i]) > max) {
         offset = i;
-        max = thrust::get<1>(mem[col[thread_id] * n + i]);
+        max = thrust::get<1>(mem[col[thread_id] * T + i]);
       }
     }
-    thrust::tuple<int, int> val(thrust::get<0>(mem[col[thread_id] * n + offset]), 1);
+    thrust::tuple<int, int> val(thrust::get<0>(mem[col[thread_id] * T + offset]), 1);
     return val;
   }
 };
 
-struct get_frequency 
+struct get_frequency
 {
     int * row_id;
     int * row;
@@ -114,7 +115,7 @@ struct get_frequency
   }
 };
 
-struct sort_per_row 
+struct sort_per_row
 {
     int * row_id;
     int * row;
@@ -140,7 +141,7 @@ struct sort_per_row
 };
 
 
-struct check_ties 
+struct check_ties
 {
     int * row_id;
     int * labellistnnz;
@@ -169,7 +170,7 @@ struct check_ties
   }
 };
 
-struct break_ties 
+struct break_ties
 {
     int * row_id;
     int * labellistnnz;
@@ -178,8 +179,8 @@ struct break_ties
     thrust::tuple<int,int> * labellist;
     int n;
     unsigned int seed;
-    break_ties(int _n,thrust::universal_vector<int> _row, thrust::universal_vector<int> _col, thrust::universal_vector<thrust::tuple<int,int> > _labellist, thrust::universal_vector<int> _row_id,
-    thrust::universal_vector<int> _labellistnnz, unsigned int _seed) {
+    break_ties(int _n,thrust::universal_vector<int> &_row, thrust::universal_vector<int> &_col, thrust::universal_vector<thrust::tuple<int,int> > &_labellist, thrust::universal_vector<int> &_row_id,
+    thrust::universal_vector<int> &_labellistnnz, unsigned int &_seed) {
         row= thrust::raw_pointer_cast(&_row[0]);
         col= thrust::raw_pointer_cast(&_col[0]);
         labellist = thrust::raw_pointer_cast(&_labellist[0]);
@@ -192,62 +193,91 @@ struct break_ties
   __device__
   void operator()(unsigned int thread_id)
   {
-    //unsigned int seed = hash(thread_id);
-    thrust::default_random_engine rng(seed);
-    if(thread_id == 12)
-    printf("labellilstnnz %d\n", labellistnnz[thread_id]);
-    thrust::uniform_real_distribution<float> u01(0,labellistnnz[thread_id]);
-    if(thread_id == 12)
-    printf("random call %d\n", (int)u01(rng));
-    labellist[row[thread_id]] = labellist[row[thread_id]+(int)u01(rng)];
+    unsigned int seed2 = hash(seed);
+    thrust::default_random_engine rng(seed2);
+    //if(thread_id == 12)
+    //printf("labellilstnnz %d\n", labellistnnz[thread_id]);
+    thrust::uniform_real_distribution<float> u01(0,1);
+    float rand2 = u01(rng) * labellistnnz[thread_id];
+    int offset = (int)truncf(rand2);
+    //if(thread_id == 12)
+    //rng.discard(thread_id);
+    labellist[row[thread_id]] = labellist[row[thread_id]+offset];
   }
 };
 
 
-struct update_memory 
+struct update_memory
 {
     int * memnnz;
     int * row;
     thrust::tuple<int,int> * mem;
     thrust::tuple<int,int> * labellist;
     int n;
+    int T;
     //int * _col, int * _mem, int * _memnnz,
-    update_memory(int _n, thrust::universal_vector<int> &_row, thrust::universal_vector<thrust::tuple<int,int> > &_mem, thrust::universal_vector<thrust::tuple<int,int> > &_labellist, thrust::universal_vector<int> &_memnnz) {
+    update_memory(int _n, thrust::universal_vector<int> &_row, thrust::universal_vector<thrust::tuple<int,int> > &_mem, thrust::universal_vector<thrust::tuple<int,int> > &_labellist, thrust::universal_vector<int> &_memnnz, int _T) {
         row= thrust::raw_pointer_cast(_row.data());
         mem = thrust::raw_pointer_cast(_mem.data());
         labellist = thrust::raw_pointer_cast(_labellist.data());
         memnnz = thrust::raw_pointer_cast(_memnnz.data());
         n = _n;
+        T = _T;
     }
   __device__
   void operator()(unsigned int thread_id)
   {
     int flag = 0;
     for(int i = 0; i < memnnz[thread_id]; i++) {
-      if(thrust::get<0>(mem[thread_id*n+i]) == thrust::get<0>(labellist[row[thread_id]])){
-        int count = thrust::get<1>(mem[thread_id*n+i])+1;
-        thrust::tuple<int,int> val(thrust::get<0>(mem[thread_id*n+i]), count);
-        mem[thread_id*n+i] = val;
+      if(thrust::get<0>(mem[thread_id*T+i]) == thrust::get<0>(labellist[row[thread_id]])){
+        int count = thrust::get<1>(mem[thread_id*T+i])+1;
+        thrust::tuple<int,int> val(thrust::get<0>(mem[thread_id*T+i]), count);
+        mem[thread_id*T+i] = val;
         flag = 1;
       }
     }
-    if(flag == 0 && memnnz[thread_id] < n) {
+    if(flag == 0 && memnnz[thread_id] < T) {
       thrust::tuple<int,int> val(thrust::get<0>(labellist[row[thread_id]]), 1);
-      mem[thread_id*n+memnnz[thread_id]] = val;
+      mem[thread_id*T+memnnz[thread_id]] = val;
       memnnz[thread_id]++;
     }
-    else if(flag == 0 && memnnz[thread_id] == n) {
+    else if(flag == 0 && memnnz[thread_id] == T) {
       int lowcount = 1000000000;
       int index = -1;
       for(int i = 0; i < n; i++) {
-        if(thrust::get<1>(mem[thread_id*n+i]) < lowcount) {
+        if(thrust::get<1>(mem[thread_id*T+i]) < lowcount) {
           index = i;
-          lowcount = thrust::get<1>(mem[thread_id*n+i]);
+          lowcount = thrust::get<1>(mem[thread_id*T+i]);
         }
       }
       thrust::tuple<int,int> val(thrust::get<0>(labellist[row[thread_id]]), 1);
-      mem[thread_id*n+index] = val;
+      mem[thread_id*T+index] = val;
     }
+  }
+};
+
+
+struct post_process
+{
+    thrust::tuple<int,int> * mem;
+    int T;
+    int n;
+    float r;
+    //int * _col, int * _mem, int * _memnnz,
+    post_process(int _n, thrust::universal_vector<thrust::tuple<int,int> > &_mem, int _T, float _r) {
+        mem = thrust::raw_pointer_cast(_mem.data());
+        n = _n;
+        T = _T;
+        r = _r;
+    }
+  __device__
+  thrust::tuple<int,int> operator()(unsigned int thread_id)
+  {
+    thrust::tuple<int, int> res(-1,0);
+    if(thrust::get<1>(mem[thread_id]) < (float)(T*r)) {
+      return res;
+    }
+    return mem[thread_id];
   }
 };
 
@@ -261,228 +291,188 @@ void SLPA(raft::handle_t const& handle,
 {
    int T = 50;
     float r = 0.1;
-    int n = 13;
+    int n = 13; 
     int cols = 56;
     int mod = 1;
-    thrust::universal_vector<int> row(n+1);
-    row[0] = 0;
-    row[1] = 3;
-    row[2] = 7;
-    row[3] = 12;
-    row[4] = 17;
-    row[5] = 21;
-    row[6] = 26;
-    row[7] = 31;
-    row[8] = 34;
-    row[9] = 38;
-    row[10] = 42;
-    row[11] = 46;
-    row[12] = 49;
-    row[13] = 56;
-    thrust::universal_vector<int> col(cols);
-    col[0] = 1;
-    col[1] = 2;
-    col[2] = 3;
-    col[3] = 0;
-    col[4] = 2;
-    col[5] = 3;
-    col[6] = 12;
-    col[7] = 0;
-    col[8] = 1;
-    col[9] = 3;
-    col[10] = 6;
-    col[11] = 12;
-    col[12] = 0;
-    col[13] = 1;
-    col[14] = 2;
-    col[15] = 8;
-    col[16] = 12;
-    col[17] = 5;
-    col[18] = 6;
-    col[19] = 7;
-    col[20] = 12;
-    col[21] = 4;
-    col[22] = 6;
-    col[23] = 7;
-    col[24] = 9;
-    col[25] = 12;
-    col[26] = 2;
-    col[27] = 4;
-    col[28] = 5;
-    col[29] = 7;
-    col[30] = 12;
-    col[31] = 4;
-    col[32] = 5;
-    col[33] = 6;
-    col[34] = 3;
-    col[35] = 9;
-    col[36] = 10;
-    col[37] = 11;
-    col[38] = 5;
-    col[39] = 8;
-    col[40] = 10;
-    col[41] = 11;
-    col[42] = 8;
-    col[43] = 9;
-    col[44] = 11;
-    col[45] = 12;
-    col[46] = 8;
-    col[47] = 9;
-    col[48] = 10;
-    col[49] = 1;
-    col[50] = 2;
-    col[51] = 3;
-    col[52] = 4;
-    col[53] = 5;
-    col[54] = 6;
-    col[55] = 10;
+    int num_lines = 0;
+
+    thrust::universal_vector<int> row;
+    thrust::universal_vector<int> col;
+
+    std::cout << "finished creating\n" << std::endl;
+
     thrust::universal_vector<int> row_id(cols);
-    row_id[0] = 0;    
-    row_id[1] = 0;    
-    row_id[2] = 0;    
-    row_id[3] = 1;    
-    row_id[4] = 1;    
-    row_id[5] = 1;    
-    row_id[6] = 1;
-    row_id[7] = 2;    
-    row_id[8] = 2;    
-    row_id[9] = 2;    
-    row_id[10] = 2;
-    row_id[11] = 2;
-    row_id[12] = 3;
-    row_id[13] = 3;
-    row_id[14] = 3;
-    row_id[15] = 3;
-    row_id[16] = 3;
-    row_id[17] = 4;
-    row_id[18] = 4;
-    row_id[19] = 4;
-    row_id[20] = 4;
-    row_id[21] = 5;
-    row_id[22] = 5;
-    row_id[23] = 5;
-    row_id[24] = 5;
-    row_id[25] = 5;
-    row_id[26] = 6;
-    row_id[27] = 6;
-    row_id[28] = 6;
-    row_id[29] = 6;
-    row_id[30] = 6;
-    row_id[31] = 7;
-    row_id[32] = 7;
-    row_id[33] = 7;
-    row_id[34] = 8;
-    row_id[35] = 8;
-    row_id[36] = 8;
-    row_id[37] = 8;
-    row_id[38] = 9;
-    row_id[39] = 9;
-    row_id[40] = 9;
-    row_id[41] = 9;
-    row_id[42] = 10;
-    row_id[43] = 10;
-    row_id[44] = 10;
-    row_id[45] = 10;
-    row_id[46] = 11;
-    row_id[47] = 11;
-    row_id[48] = 11;
-    row_id[49] = 12;
-    row_id[50] = 12;
-    row_id[51] = 12;
-    row_id[52] = 12;
-    row_id[53] = 12;
-    row_id[54] = 12;
-    row_id[55] = 12;
-    thrust::universal_vector<thrust::tuple<int,int> > mem(n*n);
+     for(int i = 0; i < n; i++) {
+        for(int j = row[i]; j < row[i+1]; j++) {
+            row_id[j] = i;
+        }
+    }
+    std::cout << "finished creating row_id\n" << std::endl;
+
+    int ne = T;
+    thrust::universal_vector<thrust::tuple<int,int> > mem(n*ne);
+    //std::cout << mem.size() << std::endl;
     thrust::universal_vector<int> memnnz(n);
     for(int i = 0; i < n; i++) {
-        thrust::tuple<int,int> init(i, 1);
-        thrust::fill(mem.begin()+i*n, mem.begin()+(i*n+n), init);
+            thrust::tuple<int,int> init(i, 1);
+        for(int j = 0; j < ne; j++) {
+                mem[i*ne+j] = init;
+                //std::cout << "this is i " << i << "this is j " << j << " " << thrust::get<0>(mem[i*ne+j]) << " " << thrust::get<1>(mem[i*ne+j]) << std::endl;
+        }
     }
+    std::cout << "finished creating mem\n" << std::endl;
     thrust::fill(memnnz.begin(), memnnz.end(), 1);
     thrust::universal_vector<thrust::tuple<int,int> > labellist(cols);
     thrust::fill(labellist.begin(), labellist.end(), 0);
 
+    std::cout << "finished creating memnnz labellsit\n" << std::endl;
+    double times = 0;
+    double timel1 = 0;
+    double timel2 = 0;
+    double timel2_1 = 0;
+    double timel2_2 = 0;
+    double timel3 = 0;
+    double timepp = 0;
     unsigned int seed;
-    for(int k = 0; k < T; k++) {
-        seed = hash(k);
-        get_label s(n, col, mem, memnnz);
+     auto start = std::chrono::high_resolution_clock::now();
+    for(int k = 1; k < T; k++) {
+        seed = k;
+        auto starts = std::chrono::high_resolution_clock::now();
+        get_label s(n, col, mem, memnnz, ne);
         thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(cols), labellist.begin(), s);
         cudaDeviceSynchronize();
-        if(k%mod == 0) {
-            std::cout << "Speaker labellist \n";
-            for(int i = row[12]; i < row[13]; i++) {
-                std::cout << thrust::get<0>(labellist[i]) << ":" << thrust::get<1>(labellist[i]) << " ";
-            }
-            std::cout << "\n";
-        }
+        auto ends = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> diffs = ends- starts;
+        times += diffs.count();
+        //std::cout << "Time do speaker is "
+        //          <<  diffs.count() << " s\n";
+        // if(k%mod == 0) {
+        //     std::cout << "Speaker labellist \n";
+        //     for(int i = row[12]; i < row[13]; i++) {
+        //         std::cout << thrust::get<0>(labellist[i]) << ":" << thrust::get<1>(labellist[i]) << " ";
+        //     }
+        //     std::cout << "\n";
+        // }
+        auto startl1 = std::chrono::high_resolution_clock::now();
         get_frequency l1(n, row, mem, labellist, row_id);
         thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(cols), labellist.begin(), l1);
         cudaDeviceSynchronize();
-        if(k%mod == 0) {
-            std::cout << "listener 1 labellist \n";
-            for(int i = row[12]; i < row[13]; i++) {
-                std::cout << thrust::get<0>(labellist[i]) << ":" << thrust::get<1>(labellist[i]) << " ";
-            }
-            std::cout << "\n";
-        }
+        auto endl1 = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> diffl1 = endl1 - startl1;
+        timel1 += diffl1.count();
+        //std::cout << "Time do listener1 is "
+        //          <<  diffl1.count() << " s\n";
+        // if(k%mod == 0) {
+        //     std::cout << "listener 1 labellist \n";
+        //     for(int i = row[12]; i < row[13]; i++) {
+        //         std::cout << thrust::get<0>(labellist[i]) << ":" << thrust::get<1>(labellist[i]) << " ";
+        //     }
+        //     std::cout << "\n";
+        // }
+        auto startl2 = std::chrono::high_resolution_clock::now();
         sort_per_row l2(n, row, col, labellist, row_id);
         thrust::for_each(thrust::device, thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(cols), l2);
         cudaDeviceSynchronize();
-        if(k%mod == 0) {
-           std::cout << "listener 2 labellist \n";
-            for(int i = row[12]; i < row[13]; i++) {
-                std::cout << thrust::get<0>(labellist[i]) << ":" << thrust::get<1>(labellist[i]) << " ";
-            }
-            std::cout << "\n";
-        }
+        auto endl2 = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> diffl2 = endl2 - startl2;
+        timel2 += diffl2.count();
+        //std::cout << "Time do listener2 is "
+        //          <<  diffl2.count() << " s\n";
+        // if(k%mod == 0) {
+        //    std::cout << "listener 2 labellist \n";
+        //     for(int i = row[12]; i < row[13]; i++) {
+        //         std::cout << thrust::get<0>(labellist[i]) << ":" << thrust::get<1>(labellist[i]) << " ";
+        //     }
+        //     std::cout << "\n";
+        // }
         thrust::universal_vector<int> labellistnnz(n);
         thrust::fill(labellistnnz.begin(), labellistnnz.end(), 1);
+        auto startl2_1 = std::chrono::high_resolution_clock::now();
         check_ties l2_1(n, row, col, labellist, row_id, labellistnnz);
         thrust::for_each(thrust::device, thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(cols), l2_1);
         cudaDeviceSynchronize();
-        if(k%mod == 0) {
-           std::cout << "listener 2_1 labellist \n";
-            for(int i = row[12]; i < row[13]; i++) {
-                std::cout << thrust::get<0>(labellist[i]) << ":" << thrust::get<1>(labellist[i]) << " ";
-            }
-            std::cout << "\n";
-        }
-        
+        auto endl2_1 = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> diffl2_1 = endl2_1 - startl2_1;
+        timel2_1 += diffl2_1.count();
+        //std::cout << "Time do listener2_1 is "
+        //          <<  diffl2_1.count() << " s\n";
+        // if(k%mod == 0) {
+        //    std::cout << "listener 2_1 labellist \n";
+        //     for(int i = row[12]; i < row[13]; i++) {
+        //         std::cout << thrust::get<0>(labellist[i]) << ":" << thrust::get<1>(labellist[i]) << " ";
+        //     }
+        //     std::cout << "\n";
+        // }
+
+        auto startl2_2 = std::chrono::high_resolution_clock::now();
         break_ties l2_2(n, row, col, labellist, row_id, labellistnnz, seed);
         thrust::for_each(thrust::device, thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(n), l2_2);
         cudaDeviceSynchronize();
-        if(k%mod == 0) {
-            std::cout << "listener 2_2 labellist \n";
-            for(int i = row[12]; i < row[13]; i++) {
-                std::cout << thrust::get<0>(labellist[i]) << ":" << thrust::get<1>(labellist[i]) << " ";
-            }
-            std::cout << "\n";
-        }
-        update_memory l3(n, row, mem, labellist, memnnz);
+        auto endl2_2 = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> diffl2_2 = endl2_2 - startl2_2;
+        timel2_2 += diffl2_2.count();
+        //std::cout << "Time do listener2_2 is "
+        //          <<  diffl2_2.count() << " s\n";
+        // if(k%mod == 0) {
+        //     std::cout << "listener 2_2 labellist \n";
+        //     for(int i = row[12]; i < row[13]; i++) {
+        //         std::cout << thrust::get<0>(labellist[i]) << ":" << thrust::get<1>(labellist[i]) << " ";
+        //     }
+        //     std::cout << "\n";
+        // }
+        auto startl3 = std::chrono::high_resolution_clock::now();
+        update_memory l3(n, row, mem, labellist, memnnz, ne);
         thrust::for_each(thrust::device, thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(n), l3);
         cudaDeviceSynchronize();
-        if(k%mod == 0) {
-            std::cout << "Listener 3 mem\n";
-            for(int i = 0; i < n; i++) {
-                std::cout << "Vertex "<< i << ": ";
-                for(int j = 0; j < memnnz[i]; j++) {
-                    std::cout << thrust::get<0>(mem[i*n+j]) << " " << thrust::get<1>(mem[i*n+j]) << " ";
-                }
-                std::cout << "\n";
-            }
-            std::cout << "\n";
-        }
+        auto endl3 = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> diffl3 = endl3 - startl3;
+        timel3 += diffl3.count();
+        //std::cout << "Time do listener3 is "
+        //          <<  diffl3.count() << " s\n";
+        // if(k%mod == 0) {
+        //     std::cout << "Listener 3 mem\n";
+        //     for(int i = 0; i < n; i++) {
+        //         std::cout << "Vertex "<< i << ": ";
+        //         for(int j = 0; j < memnnz[i]; j++) {
+        //             std::cout << thrust::get<0>(mem[i*T+j]) << " " << thrust::get<1>(mem[i*T+j]) << " ";
+        //         }
+        //         std::cout << "\n";
+        //     }
+        //     std::cout << "\n";
+        // }
     }
+    auto startpp = std::chrono::high_resolution_clock::now();
     post_process p(n, mem, T, r);
-    thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(n*n), mem.begin(), p);
+    thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(n*ne), mem.begin(), p);
     cudaDeviceSynchronize();
-     for(int i = 0; i < n; i++) {
+        auto endpp = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> diffpp = endpp - startpp;
+
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> diff = end - start;
+        std::cout << "\nTime do total is "
+                  <<  diff.count() << " s\n";
+
+        std::cout << "average time for speaker is "
+                  <<  times/(double)T << " s\n";
+        std::cout << "average time for listerner 1 is "
+                  <<  timel1/(double)T << " s\n";
+        std::cout << "average time for listerner 2 is "
+                  <<  timel2/(double)T << " s\n";
+        std::cout << "average time for listerner 2_1 is "
+                  <<  timel2_1/(double)T << " s\n";
+        std::cout << "average time for listerner 2_2 is "
+                  <<  timel2_2/(double)T << " s\n";
+        std::cout << "average time for listerner 3 is "
+                  <<  timel3/(double)T << " s\n";
+        std::cout << "time for post is "
+                  <<  diffpp.count() << " s\n";
+        /*for(int i = 0; i < n; i++) {
         int count = 0;
         std::cout << "Vertex " << i << " is in communities ";
         for(int j = 0; j < memnnz[i]; j++) {
-            if(thrust::get<0>(mem[i*n+j]) != -1) {
-                std::cout << thrust::get<0>(mem[i*n+j]) << " ";
+            if(thrust::get<0>(mem[i*T+j]) != -1) {
+                std::cout << thrust::get<0>(mem[i*T+j]) << " ";
                 count++;
             }
         }
@@ -490,7 +480,7 @@ void SLPA(raft::handle_t const& handle,
             std::cout << "overlap\n";
         else
             std::cout << " only community\n";
-    }
+    }*/
     return;
 }
 }
