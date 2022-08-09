@@ -53,34 +53,66 @@ unsigned int hash(unsigned int a)
     return a;
 }
 
+struct tupleMax
+{
+    template<typename T, typename T1>
+    __host__ __device__
+    thrust::tuple<T, T> operator()(thrust::tuple<T, T> t0, thrust::tuple<T1, T1> t1)
+    {
+            if(thrust::get<1>(t0) < thrust::get<1>(t1)) {
+              return t1;
+            }
+            else 
+              return t0;
+            //return thrust::make_tuple(thrust::get<0>(t0) + thrust::get<0>(t1), thrust::get<1>(t0) + thrust::get<1>(t1));
+    }
+};
+
+// struct get_label
+// {
+//     int * col;
+//     thrust::tuple<int,int> * mem;
+//     int * memnnz;
+//     int n;
+//     int T;
+//     //int * _col, int * _mem, int * _memnnz,
+//     get_label(int _n, thrust::universal_vector<int> &_col, thrust::universal_vector<thrust::tuple<int,int> > &_mem, thrust::universal_vector<int> &_memnnz, int _T) {
+//         col= thrust::raw_pointer_cast(_col.data());
+//         mem = thrust::raw_pointer_cast(_mem.data());
+//         memnnz= thrust::raw_pointer_cast(_memnnz.data());
+//         //labellist = thrust::raw_pointer_cast(&_labellist[0]);
+//         n = _n;
+//         T = _T;
+//     }
+//   __device__
+//   thrust::tuple<int,int> operator()(unsigned int thread_id)
+//   {
+//     int max = 0;
+//     int offset = -1;
+//     for(int i = 0; i < memnnz[col[i]]; i++){
+//       if(thrust::get<1>(mem[col[thread_id] * T + i]) > max) {
+//         offset = i;
+//         max = thrust::get<1>(mem[col[thread_id] * T + i]);
+//       }
+//     }
+//     thrust::tuple<int, int> val(thrust::get<0>(mem[col[thread_id] * T + offset]), 1);
+//     return val;
+//   }
+// };
+
 struct get_label
 {
     int * col;
-    thrust::tuple<int,int> * mem;
-    int * memnnz;
-    int n;
-    int T;
+    thrust::tuple<int,int> * max_per_row;
     //int * _col, int * _mem, int * _memnnz,
-    get_label(int _n, thrust::universal_vector<int> &_col, thrust::universal_vector<thrust::tuple<int,int> > &_mem, thrust::universal_vector<int> &_memnnz, int _T) {
+    get_label(thrust::universal_vector<int> &_col, thrust::universal_vector<thrust::tuple<int,int> > &_max_per_row) {
         col= thrust::raw_pointer_cast(_col.data());
-        mem = thrust::raw_pointer_cast(_mem.data());
-        memnnz= thrust::raw_pointer_cast(_memnnz.data());
-        //labellist = thrust::raw_pointer_cast(&_labellist[0]);
-        n = _n;
-        T = _T;
+        max_per_row = thrust::raw_pointer_cast(_max_per_row.data());
     }
   __device__
   thrust::tuple<int,int> operator()(unsigned int thread_id)
   {
-    int max = 0;
-    int offset = -1;
-    for(int i = 0; i < memnnz[col[i]]; i++){
-      if(thrust::get<1>(mem[col[thread_id] * T + i]) > max) {
-        offset = i;
-        max = thrust::get<1>(mem[col[thread_id] * T + i]);
-      }
-    }
-    thrust::tuple<int, int> val(thrust::get<0>(mem[col[thread_id] * T + offset]), 1);
+    thrust::tuple<int,int> val(thrust::get<0>(max_per_row[col[thread_id]]), 1);
     return val;
   }
 };
@@ -207,6 +239,55 @@ struct break_ties
 };
 
 
+// struct update_memory
+// {
+//     int * memnnz;
+//     int * row;
+//     thrust::tuple<int,int> * mem;
+//     thrust::tuple<int,int> * labellist;
+//     int n;
+//     int T;
+//     //int * _col, int * _mem, int * _memnnz,
+//     update_memory(int _n, thrust::universal_vector<int> &_row, thrust::universal_vector<thrust::tuple<int,int> > &_mem, thrust::universal_vector<thrust::tuple<int,int> > &_labellist, thrust::universal_vector<int> &_memnnz, int _T) {
+//         row= thrust::raw_pointer_cast(_row.data());
+//         mem = thrust::raw_pointer_cast(_mem.data());
+//         labellist = thrust::raw_pointer_cast(_labellist.data());
+//         memnnz = thrust::raw_pointer_cast(_memnnz.data());
+//         n = _n;
+//         T = _T;
+//     }
+//   __device__
+//   void operator()(unsigned int thread_id)
+//   {
+//     int flag = 0;
+//     for(int i = 0; i < memnnz[thread_id]; i++) {
+//       if(thrust::get<0>(mem[thread_id*T+i]) == thrust::get<0>(labellist[row[thread_id]])){
+//         int count = thrust::get<1>(mem[thread_id*T+i])+1;
+//         thrust::tuple<int,int> val(thrust::get<0>(mem[thread_id*T+i]), count);
+//         mem[thread_id*T+i] = val;
+//         flag = 1;
+//       }
+//     }
+//     if(flag == 0 && memnnz[thread_id] < T) {
+//       thrust::tuple<int,int> val(thrust::get<0>(labellist[row[thread_id]]), 1);
+//       mem[thread_id*T+memnnz[thread_id]] = val;
+//       memnnz[thread_id]++;
+//     }
+//     else if(flag == 0 && memnnz[thread_id] == T) {
+//       int lowcount = 1000000000;
+//       int index = -1;
+//       for(int i = 0; i < n; i++) {
+//         if(thrust::get<1>(mem[thread_id*T+i]) < lowcount) {
+//           index = i;
+//           lowcount = thrust::get<1>(mem[thread_id*T+i]);
+//         }
+//       }
+//       thrust::tuple<int,int> val(thrust::get<0>(labellist[row[thread_id]]), 1);
+//       mem[thread_id*T+index] = val;
+//     }
+//   }
+// };
+
 struct update_memory
 {
     int * memnnz;
@@ -215,14 +296,17 @@ struct update_memory
     thrust::tuple<int,int> * labellist;
     int n;
     int T;
+    thrust::tuple<int, int> * max_per_row;
     //int * _col, int * _mem, int * _memnnz,
-    update_memory(int _n, thrust::universal_vector<int> &_row, thrust::universal_vector<thrust::tuple<int,int> > &_mem, thrust::universal_vector<thrust::tuple<int,int> > &_labellist, thrust::universal_vector<int> &_memnnz, int _T) {
+    update_memory(int _n, thrust::universal_vector<int> &_row, thrust::universal_vector<thrust::tuple<int,int> > &_mem, thrust::universal_vector<thrust::tuple<int,int> > &_labellist, thrust::universal_vector<int> &_memnnz, int _T,
+    thrust::universal_vector<thrust::tuple<int,int>> &_max_per_row) {
         row= thrust::raw_pointer_cast(_row.data());
         mem = thrust::raw_pointer_cast(_mem.data());
         labellist = thrust::raw_pointer_cast(_labellist.data());
         memnnz = thrust::raw_pointer_cast(_memnnz.data());
         n = _n;
         T = _T;
+        max_per_row = thrust::raw_pointer_cast(_max_per_row.data());
     }
   __device__
   void operator()(unsigned int thread_id)
@@ -233,12 +317,18 @@ struct update_memory
         int count = thrust::get<1>(mem[thread_id*T+i])+1;
         thrust::tuple<int,int> val(thrust::get<0>(mem[thread_id*T+i]), count);
         mem[thread_id*T+i] = val;
+        if(thrust::get<0>(mem[thread_id*T+i]) != thrust::get<0>(max_per_row[thread_id]) && thrust::get<1>(mem[thread_id*T+i]) > thrust::get<1>(max_per_row[thread_id])) {
+            max_per_row[thread_id] = mem[thread_id*T+i];
+        }
         flag = 1;
       }
     }
     if(flag == 0 && memnnz[thread_id] < T) {
       thrust::tuple<int,int> val(thrust::get<0>(labellist[row[thread_id]]), 1);
       mem[thread_id*T+memnnz[thread_id]] = val;
+      // if(thrust::get<0>(mem[thread_id*T+memnnz[thread_id]]) != thrsut::get<0>(max_per_row[thread_id]) && thrust::get<1>(mem[thread_id*T+memnnz[thread_id]]) > thrsut::get<1>(max_per_row[thread_id])) {
+      //       max_per_row[thread_id] = mem[thread_id*T+memnnz[thread_id]];
+      // }
       memnnz[thread_id]++;
     }
     else if(flag == 0 && memnnz[thread_id] == T) {
@@ -289,7 +379,7 @@ void SLPA(raft::handle_t const& handle,
                     raft::device_span<edge_t> counts,
                     bool do_expensive_check)
 {
-    int T = 50;
+   int T = 50;
     float r = 0.1;
     int n = (int)graph_view.number_of_vertices(); 
     int cols = (int)graph_view.local_edge_partition_view().number_of_edges();
@@ -344,11 +434,15 @@ void SLPA(raft::handle_t const& handle,
     double timel3 = 0;
     double timepp = 0;
     unsigned int seed;
+    thrust::universal_vector<thrust::tuple<int,int>> max_per_row(n);
+    for(int i = 0; i < n; i++) {
+      max_per_row[i] = thrust::make_tuple(i, 1);
+    }
      auto start = std::chrono::high_resolution_clock::now();
     for(int k = 1; k < T; k++) {
         seed = k;
         auto starts = std::chrono::high_resolution_clock::now();
-        get_label s(n, col, mem, memnnz, ne);
+        get_label s(col, max_per_row);
         thrust::transform(thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(cols), labellist.begin(), s);
         cudaDeviceSynchronize();
         auto ends = std::chrono::high_resolution_clock::now();
@@ -431,7 +525,7 @@ void SLPA(raft::handle_t const& handle,
         //     std::cout << "\n";
         // }
         auto startl3 = std::chrono::high_resolution_clock::now();
-        update_memory l3(n, row, mem, labellist, memnnz, ne);
+        update_memory l3(n, row, mem, labellist, memnnz, ne, max_per_row);
         thrust::for_each(thrust::device, thrust::counting_iterator<int>(0), thrust::counting_iterator<int>(n), l3);
         cudaDeviceSynchronize();
         auto endl3 = std::chrono::high_resolution_clock::now();

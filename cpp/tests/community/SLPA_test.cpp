@@ -74,7 +74,7 @@ class Tests_SLPA
 
     using weight_t = float;
 
-    auto [triangle_count_usecase, input_usecase] = param;
+    auto [SLPA_usecase, input_usecase] = param;
 
     raft::handle_t handle{};
     HighResClock hr_clock{};
@@ -98,7 +98,7 @@ class Tests_SLPA
     auto graph_view = graph.view();
 
     std::optional<std::vector<vertex_t>> h_vertices{std::nullopt};
-    if (triangle_count_usecase.vertex_subset_ratio < 1.0) {
+    if (SLPA_usecase.vertex_subset_ratio < 1.0) {
       std::default_random_engine generator{};
       std::uniform_real_distribution<double> distribution{0.0, 1.0};
       h_vertices = std::vector<vertex_t>(graph_view.number_of_vertices());
@@ -108,9 +108,9 @@ class Tests_SLPA
       (*h_vertices)
         .erase(std::remove_if((*h_vertices).begin(),
                               (*h_vertices).end(),
-                              [&generator, &distribution, triangle_count_usecase](auto) {
+                              [&generator, &distribution, SLPA_usecase](auto) {
                                 return distribution(generator) >=
-                                       triangle_count_usecase.vertex_subset_ratio;
+                                       SLPA_usecase.vertex_subset_ratio;
                               }),
                (*h_vertices).end());
     }
@@ -131,7 +131,7 @@ class Tests_SLPA
       hr_clock.start();
     }
 
-    cugraph::triangle_count<vertex_t, edge_t, weight_t, false>(
+    cugraph::SLPA<vertex_t, edge_t, weight_t, false>(
       handle,
       graph_view,
       d_vertices ? std::make_optional<raft::device_span<vertex_t const>>((*d_vertices).begin(),
@@ -147,7 +147,7 @@ class Tests_SLPA
       std::cout << "Triangle count took " << elapsed_time * 1e-6 << " s.\n";
     }
 
-    if (triangle_count_usecase.check_correctness) {
+    if (SLPA_usecase.check_correctness) {
       cugraph::graph_t<vertex_t, edge_t, weight_t, false, false> unrenumbered_graph(handle);
       if (renumber) {
         std::tie(unrenumbered_graph, std::ignore) =
@@ -169,12 +169,12 @@ class Tests_SLPA
 
       handle.sync_stream();
 
-      std::vector<edge_t> h_reference_triangle_counts(unrenumbered_graph_view.number_of_vertices());
+      // std::vector<edge_t> h_reference_triangle_counts(unrenumbered_graph_view.number_of_vertices());
 
-      triangle_count_reference(h_offsets.data(),
-                               h_indices.data(),
-                               unrenumbered_graph_view.number_of_vertices(),
-                               h_reference_triangle_counts.data());
+      // triangle_count_reference(h_offsets.data(),
+      //                          h_indices.data(),
+      //                          unrenumbered_graph_view.number_of_vertices(),
+      //                          h_reference_triangle_counts.data());
 
       std::vector<vertex_t> h_cugraph_vertices(d_triangle_counts.size());
       if (d_vertices) {
@@ -270,7 +270,11 @@ INSTANTIATE_TEST_SUITE_P(
   ::testing::Combine(
     // disable correctness checks
     ::testing::Values(SLPA_Usecase{0.1, false}, SLPA_Usecase{1.0, false}),
-    ::testing::Values(cugraph::test::File_Usecase("test/datasets/karate.mtx"))));
+    ::testing::Values(cugraph::test::File_Usecase("test/datasets/karate.mtx"))
+    ::testing::Values(cugraph::test::File_Usecase("test/datasets/ca-HepTh.mtx"))
+    ::testing::Values(cugraph::test::File_Usecase("test/datasets/web-Stanford.mtx"))
+    ::testing::Values(cugraph::test::File_Usecase("test/datasets/roadNet-CA.mtx"))
+    ::testing::Values(cugraph::test::File_Usecase("test/datasets/com-LiveJournal.mtx"))));
 
 INSTANTIATE_TEST_SUITE_P(
   rmat_benchmark_test, /* note that scale & edge factor can be overridden in benchmarking (with
