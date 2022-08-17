@@ -20,7 +20,7 @@ the compile command for the hash table implementations is:
  nvcc -arch=sm_80 --expt-relaxed-constexpr --extended-lambda -I /home/sanilr/cuco_wshared/include/ -O3 SLPA_hashtable.cu
  
 ** Please use cuda 11.7 or greater as previous versions of nvcc don't like the templates and will complain with 100s of error messages. **
-
+* J. Xie, B. K. Szymanski and X. Liu, "SLPA: Uncovering Overlapping Communities in Social Networks via a Speaker-Listener Interaction Dynamic Process," 2011 IEEE 11th International Conference on Data Mining Workshops, 2011, pp. 344-349, doi: 10.1109/ICDMW.2011.154. https://arxiv.org/pdf/1109.5720.pdf
 
 # Louvain and Related Clustering Algorithms
 cuGraph contains a GPU implementation of the Louvain algorithm and several related clustering algorithms (Leiden and ECG).
