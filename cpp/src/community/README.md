@@ -1,10 +1,15 @@
 # SLPA
 
-THE SLPA implementaitons are in the files with the SLPA tag. They are
+THE SLPA implementaitons are in the files with the SLPA tag. They are:
+
 Baseline: SLPA.cuh
+
 maxspeaker: SLPA_maxspeaker.cuh
+
 device_hash_table: SLPA_hashtable.cuh
+
 host_side_hash_table: SLPA_hosthashtable.cuh
+
 host_side_memory_hash_table: SLPA_memhashtable.cuh
 
 At the time of writing the testing file is broken and won't work for any of the hash table implementations as it requires a different version of CuCollections that is currently a PR. https://github.com/NVIDIA/cuCollections/tree/e904dca1dc349c7f83b6bf07dfd03048381be869/include/cuco
