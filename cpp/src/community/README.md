@@ -6,7 +6,7 @@ Baseline: SLPA.cuh
 
 maxspeaker: SLPA_maxspeaker.cuh
 
-device_hash_table: SLPA_hashtable.cuh
+device_hash_table: SLPA_hashtable.cu
 
 host_side_hash_table: SLPA_hosthashtable.cuh
 
@@ -15,8 +15,9 @@ host_side_memory_hash_table: SLPA_memhashtable.cuh
 At the time of writing the testing file is broken and won't work for any of the hash table implementations as it requires a different version of CuCollections that is currently a PR. https://github.com/NVIDIA/cuCollections/tree/e904dca1dc349c7f83b6bf07dfd03048381be869/include/cuco
 
 the compile command for the hash table implementations is:
- nvcc -arch=sm_80 --expt-relaxed-constexpr --extended-lambda -I /home/sanilr/cuco_wshared/include/ -O3 hashtablev4_updatememonly_thrust_SLPA.cu
- Please use cuda 11.7 or greater as previous versions of nvcc don't like the templates and will complain with 100s of error messages. 
+ nvcc -arch=sm_80 --expt-relaxed-constexpr --extended-lambda -I /home/sanilr/cuco_wshared/include/ -O3 SLPA_hashtable.cu
+ 
+** Please use cuda 11.7 or greater as previous versions of nvcc don't like the templates and will complain with 100s of error messages. **
 
 
 # Louvain and Related Clustering Algorithms
