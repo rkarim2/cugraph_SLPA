@@ -8,9 +8,11 @@ maxspeaker: SLPA_maxspeaker.cuh
 
 device_hash_table: SLPA_hashtable.cu
 
-host_side_hash_table: SLPA_hosthashtable.cuh
+host_side_hash_table: SLPA_hosthashtable.cu
 
-host_side_memory_hash_table: SLPA_memhashtable.cuh
+host_side_memory_hash_table: SLPA_memhashtable.cu
+
+no labellist(future work implementation, currently broken): SLPA_nollhashtable.cu
 
 At the time of writing the testing file is broken and won't work. Messed with it after max speaker implementation and couldnt figure out what was wrong. 
 
